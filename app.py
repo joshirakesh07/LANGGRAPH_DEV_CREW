@@ -49,136 +49,127 @@ class DevCrewState(TypedDict):
 
 
 # ============================================================
-# 4. PLANNER AGENT
+# 4. PLANNER
 # ============================================================
 
-def planner_agent(state: DevCrewState):
+def planner_agent(state):
 
     prompt = f"""
-You are the Planner Agent of a software development team.
+You are the Planning Agent.
 
-USER TASK:
+User task:
 {state["task"]}
 
-Create a clear development plan for this task.
+Create a clear step-by-step plan for solving this
+software development problem.
 
-Include:
-1. Problem understanding
-2. Approach
-3. Required technologies or libraries
-4. Implementation steps
-
-Do NOT write the complete code.
+Do not write code.
 """
 
     response = llm.invoke(prompt)
 
     return {
-        "plan": response.content
+        "plan": str(response.content)
     }
 
 
 # ============================================================
-# 5. CODER AGENT
+# 5. CODER
 # ============================================================
 
-def coder_agent(state: DevCrewState):
+def coder_agent(state):
 
     prompt = f"""
-You are the Coder Agent of a software development team.
+You are the Coding Agent.
 
-USER TASK:
+User task:
 {state["task"]}
 
-PLANNER'S PLAN:
+Plan:
 {state["plan"]}
 
 Write a complete working solution.
 
-Requirements:
-- Use clean code
-- Include all required imports
-- Keep the code easy to understand
-- Do not skip important parts
-- Include comments where useful
+Include:
+- Required imports
+- Complete code
+- Comments where useful
+- Simple implementation
 """
 
     response = llm.invoke(prompt)
 
     return {
-        "code": response.content
+        "code": str(response.content)
     }
 
 
 # ============================================================
-# 6. REVIEWER AGENT
+# 6. REVIEWER
 # ============================================================
 
-def reviewer_agent(state: DevCrewState):
+def reviewer_agent(state):
 
     prompt = f"""
-You are the Code Reviewer Agent.
+You are the Code Review Agent.
 
-USER TASK:
+User task:
 {state["task"]}
 
-GENERATED CODE:
+Code:
 {state["code"]}
 
-Review the generated code carefully.
+Check the code for:
 
-Check for:
+- Syntax errors
+- Logic errors
+- Missing imports
+- Runtime problems
+- Incorrect output
+- Edge cases
 
-1. Syntax errors
-2. Logic errors
-3. Missing imports
-4. Incorrect functions
-5. Runtime errors
-6. Whether the solution actually solves the task
-
-Give specific corrections if required.
+If there are problems, explain exactly how to fix them.
 """
 
     response = llm.invoke(prompt)
 
     return {
-        "review": response.content
+        "review": str(response.content)
     }
 
 
 # ============================================================
-# 7. TESTER AGENT
+# 7. TESTER
 # ============================================================
 
-def tester_agent(state: DevCrewState):
+def tester_agent(state):
 
     prompt = f"""
-You are the Tester Agent.
+You are the Testing Agent.
 
-USER TASK:
+User task:
 {state["task"]}
 
-GENERATED CODE:
+Code:
 {state["code"]}
 
-CODE REVIEW:
+Review:
 {state["review"]}
 
-Create test cases for the solution.
+Create useful test cases.
 
-For every test case provide:
-
+For each test case give:
 - Input
 - Expected output
-- Purpose of the test
+- Purpose
 
-Also identify any possible edge cases.
+Also include important edge cases.
 """
 
     response = llm.invoke(prompt)
 
     return {
-        "tests": response.content
+        "tests": str(response.content)
     }
 
 
@@ -186,72 +177,63 @@ Also identify any possible edge cases.
 # 8. FINAL AGENT
 # ============================================================
 
-def final_agent(state: DevCrewState):
+def final_agent(state):
 
     prompt = f"""
 You are the Lead Developer.
 
-Prepare the final answer for the user.
+Prepare the final solution for the user.
 
-USER TASK:
+User task:
 {state["task"]}
 
-DEVELOPMENT PLAN:
+Plan:
 {state["plan"]}
 
-GENERATED CODE:
+Code:
 {state["code"]}
 
-CODE REVIEW:
+Review:
 {state["review"]}
 
-TEST CASES:
+Tests:
 {state["tests"]}
 
-Create the final response using this format:
+If the reviewer found errors, fix them.
 
-## Plan
+Return the final answer using:
 
-Give the development plan.
+PLAN:
+<plan>
 
-## Code
+CODE:
+<complete corrected code>
 
-Give the corrected complete code.
+REVIEW:
+<review summary>
 
-## Review
+TEST CASES:
+<test cases>
 
-Summarize the important review points.
+HOW TO RUN:
+<instructions>
 
-## Test Cases
-
-Give useful test cases with expected outputs.
-
-## How to Run
-
-Explain how to run the code.
-
-IMPORTANT:
-If the reviewer found errors, fix them before showing
-the final code.
-
-Do not mention internal agents or LangGraph processing.
+Do not mention internal agents or LangGraph.
 """
 
     response = llm.invoke(prompt)
 
     return {
-        "final_answer": response.content
+        "final_answer": str(response.content)
     }
 
 
 # ============================================================
-# 9. CREATE LANGGRAPH WORKFLOW
+# 9. LANGGRAPH
 # ============================================================
 
 workflow = StateGraph(DevCrewState)
 
-
-# Add agents
 
 workflow.add_node(
     "planner",
@@ -278,10 +260,6 @@ workflow.add_node(
     final_agent
 )
 
-
-# ============================================================
-# 10. CONNECT AGENTS
-# ============================================================
 
 workflow.add_edge(
     START,
@@ -314,43 +292,47 @@ workflow.add_edge(
 )
 
 
-# Compile graph
-
 dev_crew = workflow.compile()
 
 
 # ============================================================
-# 11. INPUT MODEL
+# 10. INPUT MODEL
 # ============================================================
 
 class AgentInput(BaseModel):
 
     input: str = Field(
-        description="Describe your software development task"
+        description="Your software development task"
     )
 
 
 # ============================================================
-# 12. FORMAT INPUT
+# 11. RUN DEV CREW
 # ============================================================
 
-def format_for_agent(x):
+def run_dev_crew(data):
 
-    if isinstance(x, dict):
+    # LangServe sends {"input": "..."}
+    if isinstance(data, dict):
 
-        user_input = x.get(
-            "input",
-            ""
-        )
+        task = data.get("input", "")
 
     else:
 
-        user_input = x.input
+        task = str(data)
 
 
-    return {
+    task = str(task).strip()
 
-        "task": user_input,
+
+    if not task:
+
+        return "Please enter a software development task."
+
+
+    initial_state = {
+
+        "task": task,
 
         "plan": "",
 
@@ -365,119 +347,74 @@ def format_for_agent(x):
     }
 
 
-# ============================================================
-# 13. EXTRACT FINAL RESPONSE
-# ============================================================
-
-def extract_response(output):
-
-    if isinstance(output, dict):
-
-        return output.get(
-            "final_answer",
-            str(output)
-        )
-
-    return str(output)
-
-
-# ============================================================
-# 14. CREATE LANGSERVE CHAIN
-# ============================================================
-
-formatted_agent_chain = (
-
-    RunnableLambda(
-        format_for_agent
+    result = dev_crew.invoke(
+        initial_state
     )
 
-    | dev_crew
 
-    | RunnableLambda(
-        extract_response
-    )
+    return result["final_answer"]
 
+
+# ============================================================
+# 12. CREATE LANGSERVE RUNNABLE
+# ============================================================
+
+dev_crew_chain = RunnableLambda(
+    run_dev_crew
 ).with_types(
-
     input_type=AgentInput,
-
     output_type=str
-
 )
 
 
 # ============================================================
-# 15. FASTAPI
+# 13. FASTAPI
 # ============================================================
 
 app = FastAPI(
-
     title="LangGraph Agent - Dev Crew",
-
-    description=(
-        "Multi-agent software development "
-        "crew using LangGraph and Gemini"
-    ),
-
     version="1.0"
-
 )
 
 
 # ============================================================
-# 16. LANGSERVE ROUTE
+# 14. LANGSERVE
 # ============================================================
 
 add_routes(
-
     app,
-
-    formatted_agent_chain,
-
+    dev_crew_chain,
     path="/devcrew"
-
 )
 
 
 # ============================================================
-# 17. HOME ROUTE
+# 15. HOME
 # ============================================================
 
 @app.get("/")
 def home():
 
     return {
-
-        "message": "LangGraph Dev Crew is running!",
-
-        "endpoint": "/devcrew",
-
-        "playground": "/devcrew/playground/"
-
+        "message": "LangGraph Dev Crew is running"
     }
 
 
 # ============================================================
-# 18. START SERVER
+# 16. START
 # ============================================================
 
 if __name__ == "__main__":
 
     port = int(
-
         os.environ.get(
             "PORT",
             8000
         )
-
     )
 
     uvicorn.run(
-
         app,
-
         host="0.0.0.0",
-
         port=port
-
     )
